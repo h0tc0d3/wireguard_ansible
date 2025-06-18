@@ -1,0 +1,11 @@
+[Interface]
+PrivateKey = {{ wireguard_private_key['stdout'] }}
+Address = 192.168.55.1/24,{{ ansible_default_ipv6.address | regex_replace('2$', '65') }}/125
+ListenPort = {{ wireguard_port }}
+MTU = 1412
+
+[Peer]
+PublicKey = YN7oyWvemL12NrPI9g4oSCoeqOkLn8Fdj4JxT4vkrnY=
+PresharedKey = {{ wireguard_preshared_key['stdout'] }}
+AllowedIPs = 192.168.55.0/24,192.168.88.0/24,{{ ansible_default_ipv6.address | regex_replace('2$', '60') }}/125
+PersistentKeepalive = 20

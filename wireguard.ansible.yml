@@ -1,0 +1,190 @@
+---
+
+- name: Install Wireguard
+  hosts: wireguard
+  vars:
+    update_machine: true
+    generate_keys: false
+    wireguard_port: 27631
+  tasks:
+
+    - name: Copy sshd_config
+      become: true
+      ansible.builtin.template:
+        src: templates/sshd_config.j2
+        dest: /etc/ssh/sshd_config
+        force: true
+        newline_sequence: '\n'
+
+    - name: Reload sshd service
+      become: true
+      ansible.builtin.systemd_service:
+          state: restarted
+          enabled: true
+          daemon_reload: true
+          name: sshd
+
+    - name: Disable rsyslog service
+      become: true
+      ansible.builtin.systemd_service:
+          state: stopped
+          enabled: false
+          daemon_reload: true
+          name: rsyslog
+
+    - name: Disable polkit service
+      become: true
+      ansible.builtin.systemd_service:
+          state: stopped
+          enabled: false
+          daemon_reload: true
+          name: polkit
+
+    - name: Disable firewalld service
+      become: true
+      ansible.builtin.systemd_service:
+          state: stopped
+          enabled: false
+          daemon_reload: true
+          name: firewalld
+
+    - name: Disable crond service
+      become: true
+      ansible.builtin.systemd_service:
+          state: stopped
+          enabled: false
+          daemon_reload: true
+          name: crond
+
+    - name: Disable tuned service
+      become: true
+      ansible.builtin.systemd_service:
+          state: stopped
+          enabled: false
+          daemon_reload: true
+          name: tuned
+
+    - name: Disable auditd service
+      become: true
+      ansible.builtin.systemd_service:
+          enabled: false
+          daemon_reload: true
+          name: auditd
+
+    - name: Install and update the required packages
+      become: true
+      ansible.builtin.dnf:
+        name:
+          - wireguard-tools
+          - tcpdump
+          - tar
+          - zstd
+          - neovim
+          - kitty-terminfo
+        state: latest
+
+    - name: Update all packages
+      when: update_machine == true
+      become: true
+      ansible.builtin.dnf:
+        name: "*"
+        state: latest
+
+    - name: Reboot Machine
+      when: update_machine == true
+      become: true
+      ansible.builtin.reboot:
+        post_reboot_delay: 30
+        msg: "Rebooting machine in 5 seconds"
+
+    - name: Ping host
+      become: true
+      ansible.builtin.ping:
+
+    - name: Create directory for Wireguard keys
+      when: generate_keys == true
+      become: true
+      ansible.builtin.file:
+        state: directory
+        recurse: true
+        path: /root/wireguard
+
+    - name: Generate Wireguard keys
+      when: generate_keys == true
+      become: true
+      ansible.builtin.shell: wg genkey | tee /root/wireguard/privatekey | wg pubkey | tee /root/wireguard/publickey
+
+    - name: Copy a Wireguard private key
+      become: true
+      ansible.builtin.shell: cat /root/wireguard/privatekey
+      register: wireguard_private_key
+      ignore_errors: true
+
+    - name: Copy a Wireguard public key
+      become: true
+      ansible.builtin.shell: cat /root/wireguard/publickey
+      register: wireguard_public_key
+      ignore_errors: true
+
+    - name: Copy a Wireguard preshared key
+      become: true
+      ansible.builtin.shell: wg genpsk
+      register: wireguard_preshared_key
+      ignore_errors: true
+
+    - name: Copy wg0.conf
+      become: true
+      ansible.builtin.template:
+        src: templates/wireguard.conf.j2
+        dest: /etc/wireguard/wg0.conf
+        force: true
+        owner: root
+        group: root
+        mode: '0600'
+        newline_sequence: '\n'
+
+    - name: Reload Wireguard service
+      become: true
+      ansible.builtin.systemd_service:
+          state: restarted
+          enabled: true
+          daemon_reload: true
+          name: wg-quick@wg0
+
+    - name: Copy sysctl.conf
+      become: true
+      ansible.builtin.template:
+        src: templates/sysctl.conf.j2
+        dest: /etc/sysctl.conf
+        force: true
+        owner: root
+        group: root
+        mode: '0644'
+        newline_sequence: '\r\n'
+
+    - name: Apply new sysctl.conf
+      become: true
+      ansible.builtin.shell: sysctl -p /etc/sysctl.conf
+
+    - name: Start NDP Proxy
+      become: true
+      ansible.builtin.shell: ip -6 neigh add proxy {{ ansible_default_ipv6.address | regex_replace('2$', '64') }} dev ens3
+
+    - name: Copy nftables.conf
+      become: true
+      ansible.builtin.template:
+        src: templates/nftables.conf.j2
+        dest: /etc/sysconfig/nftables.conf
+        force: true
+        owner: root
+        group: root
+        mode: '0600'
+        newline_sequence: '\n'
+
+    - name: Start NFT Script
+      become: true
+      ansible.builtin.shell: nft -o -f /etc/sysconfig/nftables.conf
+
+    - name: Print Message
+      ansible.builtin.debug:
+        msg: "IP: {{ ansible_default_ipv4.address }}\nPublic key: {{ wireguard_public_key['stdout'] }}\nPreshared key: {{ wireguard_preshared_key['stdout'] }}"
