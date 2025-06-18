@@ -1,0 +1,170 @@
+# === ВИРТУАЛЬНАЯ ПАМЯТЬ (VM) ===
+# Для роутера с 1 ГБ RAM:
+# Своппинг минимальный, так как роутеру нужно держать все в RAM
+vm.swappiness = 5
+
+# Кэш файловой системы — для роутера не критичен, уменьшаем давление
+vm.vfs_cache_pressure = 150
+
+# "Грязные" страницы — для роутера уменьшаем, чтобы не было фризов при записи логов
+vm.dirty_ratio = 10
+vm.dirty_background_ratio = 5
+vm.dirty_writeback_centisecs = 500
+vm.dirty_expire_centisecs = 3000
+
+# Защита от OOM Killer — оставляем 16-32 МБ всегда свободными для маршрутизации
+vm.min_free_kbytes = 16384
+
+# Не разрешаем overcommit — роутеру нужна стабильность, не эвристика
+vm.overcommit_memory = 0
+vm.overcommit_ratio = 50
+
+# Уменьшаем swappiness для NUMA (если есть)
+vm.zone_reclaim_mode = 0
+
+# === ФАЙЛОВАЯ СИСТЕМА ===
+# Для роутера не нужно миллион файловых дескрипторов
+fs.file-max = 100000
+fs.inotify.max_user_instances = 128
+fs.inotify.max_user_watches = 8192
+
+# === СЕТЬ: ОСНОВНЫЕ БУФЕРЫ ===
+# Для 100 Мбит/с достаточно 2-4 МБ максимум
+net.core.somaxconn = 4096
+
+# Увеличиваем дефолтные буферы для лучшей производительности
+net.core.rmem_default = 262144      # 256 КБ
+net.core.rmem_max = 4194304        # 4 МБ (для BDP 100 Мбит/с * 300 мс)
+net.core.wmem_default = 262144      # 256 КБ
+net.core.wmem_max = 4194304        # 4 МБ
+
+# Уменьшаем для экономии памяти
+net.core.optmem_max = 131072       # 128 КБ
+
+# === СЕТЬ: TCP БУФЕРЫ ===
+# min default max — оптимизировано для 100 Мбит/с
+net.ipv4.tcp_rmem = 4096 131072 4194304
+net.ipv4.tcp_wmem = 4096 131072 4194304
+
+# Максимальное количество "грязных" TCP буферов
+net.ipv4.tcp_mem = 65536 131072 262144
+
+# === СЕТЬ: UDP ===
+# Для DNS, NTP и других UDP-сервисов
+net.ipv4.udp_mem = 16384 65536 131072
+net.ipv4.udp_rmem_min = 8192
+net.ipv4.udp_wmem_min = 8192
+
+# === СЕТЬ: TCP ПОВЕДЕНИЕ ===
+# CAKE — отличный выбор для борьбы с bufferbloat на роутере
+net.core.default_qdisc = cake
+
+# BBR — лучший выбор для роутеров (хорошо работает с потерями)
+net.ipv4.tcp_congestion_control = bbr
+
+# Защита от TIME-WAIT атак
+net.ipv4.tcp_rfc1337 = 1
+
+# Обязательно для скоростей > 10 Мбит/с
+net.ipv4.tcp_window_scaling = 1
+
+# Обход MTU black holes
+net.ipv4.tcp_mtu_probing = 1
+
+# Для роутера — быстрее закрываем соединения
+net.ipv4.tcp_fin_timeout = 30
+
+# Защита от SYN flood
+net.ipv4.tcp_syncookies = 1
+
+# TCP Fast Open — только для серверов, для роутера отключаем или минимально
+# 0 = выключено, 1 = клиент, 2 = сервер, 3 = оба
+net.ipv4.tcp_fastopen = 1
+
+# Не сбрасывать окно после idle (хорошо для VoIP, SSH)
+net.ipv4.tcp_slow_start_after_idle = 0
+
+# Экономия памяти — не сохранять метрики соединений
+net.ipv4.tcp_no_metrics_save = 1
+
+# Ограничение TIME_WAIT сокетов (защита от исчерпания памяти)
+net.ipv4.tcp_max_tw_buckets = 10000
+
+# Уменьшаем таймауты для экономии ресурсов
+net.ipv4.tcp_keepalive_time = 600
+net.ipv4.tcp_keepalive_intvl = 30
+net.ipv4.tcp_keepalive_probes = 3
+
+# Ускоряем переиспользование портов
+net.ipv4.tcp_tw_reuse = 1
+# НЕ включаем tcp_tw_recycle — он устарел и ломает NAT
+
+# === СЕТЬ: МАРШРУТИЗАЦИЯ ===
+net.ipv4.ip_forward = 1
+net.ipv6.conf.all.forwarding = 1
+
+# Отключаем IPv6 если не используется (экономия памяти)
+# net.ipv6.conf.all.disable_ipv6 = 1
+
+# === СЕТЬ: ICMP ===
+# Игнорируем broadcast пинги (защита от Smurf-атак)
+net.ipv4.icmp_echo_ignore_broadcasts = 1
+# Игнорируем все пинги (если нужно)
+# net.ipv4.icmp_echo_ignore_all = 1
+
+# === СЕТЬ: NAT/CONNTRACK (КРИТИЧЕСКИ ВАЖНО ДЛЯ РОУТЕРА) ===
+# Увеличиваем таблицу conntrack для NAT (1 ГБ RAM хватит на 65536+ соединений)
+net.netfilter.nf_conntrack_max = 65536
+
+# Размер хеш-таблицы conntrack (обычно 1/4 от max)
+net.netfilter.nf_conntrack_buckets = 16384
+
+# Таймауты conntrack (в секундах)
+net.netfilter.nf_conntrack_tcp_timeout_established = 86400
+net.netfilter.nf_conntrack_tcp_timeout_time_wait = 30
+net.netfilter.nf_conntrack_tcp_timeout_close = 10
+net.netfilter.nf_conntrack_tcp_timeout_fin_wait = 30
+net.netfilter.nf_conntrack_udp_timeout = 30
+net.netfilter.nf_conntrack_udp_timeout_stream = 120
+net.netfilter.nf_conntrack_icmp_timeout = 30
+
+# Разрешаем conntrack для локальных соединений
+net.netfilter.nf_conntrack_tcp_loose = 1
+
+# === СЕТЬ: IPV4 МАРШРУТИЗАЦИЯ ===
+# Увеличиваем буферы маршрутизации
+net.ipv4.route.max_size = 1048576
+net.ipv4.route.gc_thresh = 1024
+
+# Отключаем перенаправление ICMP (роутер не должен отправлять redirects)
+net.ipv4.conf.all.send_redirects = 0
+net.ipv4.conf.default.send_redirects = 0
+net.ipv4.conf.all.accept_redirects = 0
+net.ipv4.conf.default.accept_redirects = 0
+net.ipv4.conf.all.secure_redirects = 0
+net.ipv4.conf.default.secure_redirects = 0
+
+# Защита от spoofing
+net.ipv4.conf.all.rp_filter = 1
+net.ipv4.conf.default.rp_filter = 1
+
+# === ПЛАНИРОВЩИК (для маломощных CPU) ===
+# Уменьшаем квант времени для лучшей отзывчивости
+kernel.sched_cfs_bandwidth_slice_us = 2000
+kernel.sched_rr_timeslice_ms = 10
+
+# === ПАМЯТЬ ЯДРА ===
+# Защита от переполнения буферов
+kernel.panic = 10
+kernel.panic_on_oops = 1
+
+# Увеличиваем лимиты для маршрутизации
+kernel.msgmax = 65536
+kernel.msgmnb = 65536
+
+# === Включаем forwarding ===
+net.ipv4.ip_forward = 1
+net.ipv6.conf.all.forwarding = 1
+net.ipv6.conf.ens3.proxy_ndp = 1
+net.ipv4.conf.ens3.forwarding = 1
+net.ipv4.conf.wg0.forwarding = 1
