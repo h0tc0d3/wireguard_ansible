@@ -1,0 +1,44 @@
+#!/usr/sbin/nft -f
+
+flush ruleset
+
+table inet filter {
+
+    chain input {
+        type filter hook input priority filter; policy drop;
+        ct state vmap { invalid : drop, established : accept, related : accept }
+        iif "lo" accept
+        iif != "lo" ip daddr 127.0.0.0/8 drop
+        iif != "lo" ip6 daddr ::1 drop
+        meta l4proto { icmp, ipv6-icmp } accept
+        tcp dport 22 accept
+        #udp dport {{ wireguard_port }} accept
+        udp dport {{ wireguard_port }} ct mark set 1 ip dscp set 41 accept
+    }
+
+    chain forward {
+        type filter hook forward priority filter; policy drop;
+        ct state vmap { invalid : drop, established : accept, related : accept }
+        oifname ens3 tcp flags syn tcp option maxseg size set rt mtu
+        iifname ens3 tcp flags syn tcp option maxseg size set rt mtu
+        oifname wg0 tcp flags syn tcp option maxseg size set rt mtu
+        iifname wg0 tcp flags syn tcp option maxseg size set rt mtu
+        iifname wg0 ct state new accept
+    }
+
+    chain output {
+        type filter hook output priority filter; policy accept;
+        ct mark 1 ip dscp set 41
+    }
+}
+
+table ip nat {
+    chain prerouting {
+        type nat hook prerouting priority dstnat; policy accept;
+    }
+
+    chain postrouting {
+        type nat hook postrouting priority srcnat; policy accept;
+        iifname wg0 oif ens3 snat to {{ ansible_default_ipv4.address }}
+    }
+}
